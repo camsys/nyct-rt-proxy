@@ -32,6 +32,7 @@ Here is an example `config.txt`. Uncomment the `cloudwatch.*` values to send met
     
 The following parameters are defaults, but can be overridden by adding to `config.txt`:
 
+    NYCT.gtfsAgency=MTASBWY # if running with buses, override the agency/feed ids by modifying the input gtfs agency_id and adding this option.  Default MTA NYCT
     NYCT.feedIds=["1", "2", "11", "16", "21"]
     NYCT.routeBlacklistByFeed={"1": ["D", "N", "Q"]}
     NYCT.realtimeToStaticRouteMapByFeed={"1": {"S": "GS"}}

@@ -49,6 +49,7 @@ import java.util.Set;
 public class LazyTripMatcher implements TripMatcher {
 
   private int _lateTripLimitSec = 3600; // 1 hour
+  private String _agencyId = "MTA NYCT";
   private GtfsRelationalDao _dao;
   private CalendarServiceData _csd;
   private boolean _looseMatchDisabled = false;
@@ -63,6 +64,12 @@ public class LazyTripMatcher implements TripMatcher {
   @Inject
   public void setCalendarServiceData(CalendarServiceData csd) {
     _csd = csd;
+  }
+  
+  @Inject(optional = true)
+  public void setAgencyMatchId(@Named("NYCT.gtfsAgency") String agencyid) {
+	  _agencyId = agencyid;
+	  _log.info("Using AgencyId "+_agencyId);
   }
 
   @Inject(optional = true)
@@ -104,7 +111,7 @@ public class LazyTripMatcher implements TripMatcher {
   private boolean addCandidates(GtfsRealtime.TripUpdateOrBuilder tu, NyctTripId id, ServiceDate sd, Set<TripMatchResult> candidates) {
 
     boolean found = false;
-    Route r = _dao.getRouteForId(new AgencyAndId("MTA NYCT", tu.getTrip().getRouteId()));
+    Route r = _dao.getRouteForId(new AgencyAndId(_agencyId, tu.getTrip().getRouteId()));
     Set<AgencyAndId> serviceIds = _csd.getServiceIdsForDate(sd);
 
     // We check through all trips. This could be easily restricted, but performance has not been a problem.

@@ -20,6 +20,8 @@ import org.onebusaway.gtfs.model.Trip;
 import org.onebusaway.gtfs.model.calendar.CalendarServiceData;
 import org.onebusaway.gtfs.model.calendar.ServiceDate;
 import org.onebusaway.gtfs.services.GtfsRelationalDao;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableSet;
 import com.kurtraschke.nyctrtproxy.model.ActivatedTrip;
@@ -32,7 +34,8 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import javax.annotation.PostConstruct;
-import javax.inject.Inject;
+import com.google.inject.Inject;
+import javax.inject.Named;
 
 /**
  * Find currently-active trips for a given time. (Only needed for ActivatedTripMatcher)
@@ -48,10 +51,20 @@ public class TripActivator {
   private SIRtree tripTimesTree;
 
   private int maxLookback;
+  
+  private String _agencyId = "MTA NYCT";
+  
+  private static final Logger _log = LoggerFactory.getLogger(TripActivator.class);
 
   @Inject
   public void setCalendarServiceData(CalendarServiceData csd) {
     _csd = csd;
+  }
+  
+  @Inject(optional = true)
+  public void setAgencyMatchId(@Named("NYCT.gtfsAgency") String agencyid) {
+	  _agencyId = agencyid;
+	  _log.info("Using AgencyId "+_agencyId);
   }
 
   @Inject
@@ -114,7 +127,7 @@ public class TripActivator {
             .flatMap(sd -> {
               Set<AgencyAndId> serviceIdsForDate = _csd.getServiceIdsForDate(sd);
 
-              int sdOrigin = (int) (sd.getAsCalendar(_csd.getTimeZoneForAgencyId("MTA NYCT")).getTimeInMillis() / 1000);
+              int sdOrigin = (int) (sd.getAsCalendar(_csd.getTimeZoneForAgencyId(_agencyId)).getTimeInMillis() / 1000);
 
               int startTime = (int) ((start.getTime() / 1000) - sdOrigin);
               int endTime = (int) ((end.getTime() / 1000) - sdOrigin);
