@@ -58,6 +58,7 @@ public class LazyTripMatcher implements TripMatcher {
   private GtfsRelationalDao _dao;
   private CalendarServiceData _csd;
   private boolean _looseMatchDisabled = false;
+  private boolean _allowServiceDayCoercion = true;
 
   private static final Logger _log = LoggerFactory.getLogger(LazyTripMatcher.class);
 
@@ -82,6 +83,11 @@ public class LazyTripMatcher implements TripMatcher {
   @Inject(optional = true)
   public void setLateTripLimitSec(@Named("NYCT.lateTripLimitSec") int lateTripLimitSec) {
     _lateTripLimitSec = lateTripLimitSec;
+  }
+
+  @Inject(optional = true)
+  public void setAllowServiceDayCoercion(boolean allowServiceDayCoercion) {
+    _allowServiceDayCoercion = allowServiceDayCoercion;
   }
 
   public void setLooseMatchDisabled(boolean looseMatchDisabled) {
@@ -136,6 +142,9 @@ public class LazyTripMatcher implements TripMatcher {
       int start = stopTimes.get(0).getDepartureTime(); // in sec into day.
       int end = stopTimes.get(stopTimes.size()-1).getArrivalTime();
       boolean onServiceDay = serviceIds.contains(trip.getServiceId());
+      if (!onServiceDay && !_allowServiceDayCoercion) {
+        continue;
+      }
       if (atid.strictMatch(id) && onServiceDay) {
         found = true;
         candidates.add(new TripMatchResult(tu, new ActivatedTrip(sd, trip, stopTimes)));
