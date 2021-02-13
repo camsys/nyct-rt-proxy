@@ -15,24 +15,13 @@
  */
 package com.kurtraschke.nyctrtproxy.tests;
 
-import com.google.inject.AbstractModule;
-import com.google.inject.Guice;
-import com.google.inject.Inject;
-import com.google.inject.Injector;
 import com.google.inject.Module;
-import com.google.inject.Scopes;
+import com.google.inject.*;
 import com.google.inject.name.Names;
 import com.google.protobuf.ExtensionRegistry;
 import com.google.transit.realtime.GtfsRealtime;
 import com.google.transit.realtime.GtfsRealtimeNYCT;
-import com.kurtraschke.nyctrtproxy.services.ActivatedTripMatcher;
-import com.kurtraschke.nyctrtproxy.services.CloudwatchProxyDataListener;
-import com.kurtraschke.nyctrtproxy.services.GtfsDataServiceProvider;
-import com.kurtraschke.nyctrtproxy.services.LazyTripMatcher;
-import com.kurtraschke.nyctrtproxy.services.ProxyDataListener;
-import com.kurtraschke.nyctrtproxy.services.TripActivator;
-import com.kurtraschke.nyctrtproxy.services.TripMatcher;
-import com.kurtraschke.nyctrtproxy.services.TripUpdateProcessor;
+import com.kurtraschke.nyctrtproxy.services.*;
 import junit.framework.TestCase;
 import org.junit.Before;
 import org.onebusaway.gtfs.model.AgencyAndId;
@@ -42,6 +31,7 @@ import org.onebusaway.gtfs.services.GtfsDataService;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URISyntaxException;
 
 public abstract class RtTestRunner {
 
@@ -87,7 +77,7 @@ public abstract class RtTestRunner {
       @Override protected void configure() {
         bind(File.class)
                 .annotatedWith(Names.named("NYCT.gtfsPath"))
-                .toInstance(new File(TestCase.class.getResource("/" + gtfsPath).getFile()));
+                .toInstance(getTestResource(gtfsPath));
 
         bind(GtfsDataService.class)
                 .toProvider(GtfsDataServiceProvider.class)
@@ -119,6 +109,14 @@ public abstract class RtTestRunner {
                 .toInstance(new ActivatedTripMatcher());
       }
     };
+  }
+
+  private static File getTestResource(String resourcePath) {
+    try {
+      return new File(TestCase.class.getResource("/" + resourcePath).toURI().getPath());
+    } catch (URISyntaxException e) {
+      return null;
+    }
   }
 
   protected void setAgencyId(String agencyId) {
