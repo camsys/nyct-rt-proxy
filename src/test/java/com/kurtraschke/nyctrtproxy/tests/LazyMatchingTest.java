@@ -25,6 +25,7 @@ import com.kurtraschke.nyctrtproxy.services.LazyTripMatcher;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.text.ParseException;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
@@ -48,10 +49,10 @@ public abstract class LazyMatchingTest extends RtTestRunner {
     this.filename = filename;
   }
 
-  public abstract void checkMatchResult(long timestamp, NyctTripId rtid, TripUpdateOrBuilder tripUpdate, TripMatchResult result);
+  public abstract void checkMatchResult(long timestamp, NyctTripId rtid, TripUpdateOrBuilder tripUpdate, TripMatchResult result) throws Exception;
 
   @Test
-  public void test() throws IOException {
+  public void test() throws Exception {
 
     FeedMessage msg = readFeedMessage(filename);
 
@@ -94,8 +95,6 @@ public abstract class LazyMatchingTest extends RtTestRunner {
           if (tripBuilder.getStartDate().length() > 8) {
             tripBuilder.setStartDate(fixedStartDate(tripBuilder));
           }
-
-
 
           TripMatchResult tripMatchResult = lazyTripMatcher.match(tripUpdateBuilder, rtTripId, timestamp);
 

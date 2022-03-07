@@ -27,6 +27,7 @@ import org.onebusaway.gtfs.model.AgencyAndId;
 import org.onebusaway.gtfs.model.Trip;
 import org.onebusaway.gtfs.model.calendar.ServiceDate;
 
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
@@ -40,7 +41,7 @@ public class TripServiceDateTest extends LazyMatchingTest {
   @Before
   public void before() {
     setAgencyId("MTASBWY");
-    Injector injector = Guice.createInjector(getTestModule("20220224_0052_nyct_subways_gtfs.zip", "MTASBWY", false));
+    Injector injector = Guice.createInjector(getTestModule("20220224_0052_nyct_subways_gtfs_modified.zip", "MTASBWY", false));
     injector.injectMembers(this);
   }
 
@@ -52,14 +53,14 @@ public class TripServiceDateTest extends LazyMatchingTest {
 
   @Override
   public void checkMatchResult(long timestamp, NyctTripId rtTripId, GtfsRealtime.TripUpdateOrBuilder tripUpdate,
-                               TripMatchResult result) {
+                               TripMatchResult result) throws Exception {
     int departureTime = rtTripId.getOriginDepartureTime();
     GtfsRealtimeNYCT.NyctTripDescriptor extension = tripUpdate.getTripOrBuilder().getExtension(GtfsRealtimeNYCT.nyctTripDescriptor);
     String trainId = extension.getTrainId();
 
     switch(trainId){
       case "1A 2351 HOW/207":
-        assertLooseMatch(result, "51824", "20220223");
+        assertMatch(result, "51824", "20220223", Status.LOOSE_MATCH_COERCION);
         break;
       case "1A 0021 HOW/207":
         assertNoMatch(result);
@@ -70,7 +71,7 @@ public class TripServiceDateTest extends LazyMatchingTest {
 
   }
 
-  private void assertLooseMatch(TripMatchResult result, String expectedTrip, String expectedDate) {
+  private void assertMatch(TripMatchResult result, String expectedTrip, String expectedDate, Status expectedStatus) throws ParseException {
     assertTrue(result.hasResult());
     GtfsRealtime.TripDescriptor tripDescriptor = result.getTripUpdate().getTrip();
     Trip trip = result.getResult().getTrip();
@@ -78,26 +79,17 @@ public class TripServiceDateTest extends LazyMatchingTest {
 
     String tripStartDate = tripDescriptor.getStartDate();
     String matchedTripId = trip.getId().getId();
-    try {
-      Date startDate = new SimpleDateFormat("yyyyMMdd", Locale.ENGLISH).parse(tripStartDate);
-      ServiceDate serviceDate = new ServiceDate(startDate);
 
-      Set<AgencyAndId> serviceIdsForServiceDate = getGtfsDataService().getServiceIdsOnDate(serviceDate);
+    Date startDate = new SimpleDateFormat("yyyyMMdd", Locale.ENGLISH).parse(tripStartDate);
+    ServiceDate serviceDate = new ServiceDate(startDate);
 
-      assertEquals(expectedTrip, matchedTripId);
-      assertEquals(result.getStatus(), Status.LOOSE_MATCH);
-      assertEquals(tripStartDate, expectedDate);
-      assertTrue(serviceIdsForServiceDate.contains(serviceId));
-    } catch (Exception e){
-      // do nothing;
-    }
-  }
+    Set<AgencyAndId> serviceIdsForServiceDate = getGtfsDataService().getServiceIdsOnDate(serviceDate);
 
-  private static void assertCoercedMatch(TripMatchResult result, String expected) {
-    assertTrue(result.hasResult());
-    String matchedTripId = result.getResult().getTrip().getId().getId();
-    assertEquals(expected, matchedTripId);
-    assertEquals(result.getStatus(), Status.LOOSE_MATCH_COERCION);
+    assertEquals(expectedTrip, matchedTripId);
+    assertEquals(expectedStatus, result.getStatus());
+    assertEquals(expectedDate, tripStartDate);
+    assertTrue(serviceIdsForServiceDate.contains(serviceId));
+
   }
 
   private static void assertNoMatch(TripMatchResult result) {
