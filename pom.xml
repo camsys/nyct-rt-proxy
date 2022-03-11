@@ -210,6 +210,14 @@
           <artifactId>maven-release-plugin</artifactId>
           <version>2.5.3</version>
         </plugin>
+        <plugin>
+          <groupId>com.amashchenko.maven.plugin</groupId>
+          <artifactId>gitflow-maven-plugin</artifactId>
+          <version>1.18.0</version>
+          <configuration>
+            <!-- optional configuration -->
+          </configuration>
+        </plugin>
       </plugins>
     </pluginManagement>
 
