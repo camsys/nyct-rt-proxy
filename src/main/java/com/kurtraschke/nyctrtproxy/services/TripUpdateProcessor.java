@@ -62,7 +62,8 @@ public class TripUpdateProcessor {
   private Map<Integer, Set<String>> _routeBlacklistByFeed = ImmutableMap.of(1, ImmutableSet.of("D", "N", "Q"));
 
   private Map<Integer, Map<String, String>> _realtimeToStaticRouteMapByFeed = ImmutableMap.of(1,
-          ImmutableMap.of("S", "GS", "5X", "5"));
+          ImmutableMap.of("S", "GS", "5X", "5"),
+          11, ImmutableMap.of("SS", "SI"));
 
   private Map<String, String> _addToTripReplacementPeriodByRoute = ImmutableMap.of("6", "6X", "7", "7X", "F", "FX");
 
