@@ -37,6 +37,7 @@ import junit.framework.TestCase;
 import org.junit.Before;
 import org.onebusaway.gtfs.model.AgencyAndId;
 import org.onebusaway.gtfs.model.Trip;
+import org.onebusaway.gtfs.services.GtfsDao;
 import org.onebusaway.gtfs.services.GtfsDataService;
 
 import java.io.File;
@@ -65,6 +66,10 @@ public abstract class RtTestRunner {
   @Before
   public void before() {
     _injector.injectMembers(this);
+  }
+
+  public GtfsDataService getGtfsDataService(){
+    return _dao;
   }
 
   public GtfsRealtime.FeedMessage readFeedMessage(String file) throws IOException {
@@ -98,7 +103,11 @@ public abstract class RtTestRunner {
                 .toInstance(listener);
 
         LazyTripMatcher ltm = new LazyTripMatcher();
-        ltm.setAgencyMatchId(agencyId);
+
+        bindConstant()
+                .annotatedWith(Names.named("NYCT.gtfsAgency"))
+                .to(agencyId);
+
         bind(TripMatcher.class)
                 .toInstance(ltm);
 

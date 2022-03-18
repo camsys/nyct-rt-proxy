@@ -15,7 +15,6 @@
  */
 package com.kurtraschke.nyctrtproxy.tests;
 
-import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.google.transit.realtime.GtfsRealtime.*;
 import com.google.transit.realtime.GtfsRealtimeNYCT;
@@ -26,10 +25,10 @@ import com.kurtraschke.nyctrtproxy.services.LazyTripMatcher;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.text.ParseException;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.kurtraschke.nyctrtproxy.util.NycRealtimeUtil.*;
@@ -37,7 +36,7 @@ import static com.kurtraschke.nyctrtproxy.util.NycRealtimeUtil.*;
 public abstract class LazyMatchingTest extends RtTestRunner {
 
   @Inject
-  private LazyTripMatcher ltm;
+  private LazyTripMatcher lazyTripMatcher;
 
   @Inject
   private ActivatedTripMatcher atm;
@@ -50,16 +49,17 @@ public abstract class LazyMatchingTest extends RtTestRunner {
     this.filename = filename;
   }
 
-  public abstract void checkMatchResult(long timestamp, NyctTripId rtid, TripUpdateOrBuilder tripUpdate, TripMatchResult result);
+  public abstract void checkMatchResult(long timestamp, NyctTripId rtid, TripUpdateOrBuilder tripUpdate, TripMatchResult result) throws Exception;
 
   @Test
-  public void test() throws IOException {
+  public void test() throws Exception {
 
     FeedMessage msg = readFeedMessage(filename);
 
-    for (GtfsRealtimeNYCT.TripReplacementPeriod trp : msg.getHeader()
-            .getExtension(GtfsRealtimeNYCT.nyctFeedHeader)
-            .getTripReplacementPeriodList()) {
+    List<GtfsRealtimeNYCT.TripReplacementPeriod> trpList = msg.getHeader().getExtension(GtfsRealtimeNYCT.nyctFeedHeader)
+            .getTripReplacementPeriodList();
+
+    for (GtfsRealtimeNYCT.TripReplacementPeriod trp : trpList){
       if (routeId.equals(trp.getRouteId())) {
 
         List<TripUpdate> updates = msg.getEntityList().stream()
@@ -77,27 +77,28 @@ public abstract class LazyMatchingTest extends RtTestRunner {
         long timestamp = msg.getHeader().getTimestamp();
 
         for (TripUpdate tu : updates) {
-          TripUpdate.Builder tub = TripUpdate.newBuilder(tu);
+          TripUpdate.Builder tripUpdateBuilder = TripUpdate.newBuilder(tu);
 
-          TripDescriptor.Builder tb = tub.getTripBuilder();
-          NyctTripId rtid = NyctTripId.buildFromTripDescriptor(tb);
+          TripDescriptor.Builder tripBuilder = tripUpdateBuilder.getTripBuilder();
+          NyctTripId rtTripId = NyctTripId.buildFromTripDescriptor(tripBuilder);
 
-          if (rtid != null) {
-            tub.getStopTimeUpdateBuilderList().forEach(stub -> {
+          if (rtTripId != null) {
+            tripUpdateBuilder.getStopTimeUpdateBuilderList().forEach(stub -> {
               if (!(stub.getStopId().endsWith("N") || stub.getStopId().endsWith("S"))) {
-                stub.setStopId(stub.getStopId() + rtid.getDirection());
+                stub.setStopId(stub.getStopId() + rtTripId.getDirection());
               }
             });
 
-            tb.setTripId(rtid.toString());
+            tripBuilder.setTripId(rtTripId.toString());
           }
 
-          if (tb.getStartDate().length() > 8) {
-            tb.setStartDate(fixedStartDate(tb));
+          if (tripBuilder.getStartDate().length() > 8) {
+            tripBuilder.setStartDate(fixedStartDate(tripBuilder));
           }
 
-          TripMatchResult result = ltm.match(tub, rtid, timestamp);
-          checkMatchResult(timestamp, rtid, tub, result);
+          TripMatchResult tripMatchResult = lazyTripMatcher.match(tripUpdateBuilder, rtTripId, timestamp);
+
+          checkMatchResult(timestamp, rtTripId, tripUpdateBuilder, tripMatchResult);
         }
       }
     }

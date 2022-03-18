@@ -82,7 +82,7 @@ public class NyctTripId {
    * @param tripId the trip ID
    * @return parsed trip ID
    */
-  private static NyctTripId buildFromString(String tripId) {
+  public static NyctTripId buildFromString(String tripId) {
     int originDepartureTime;
     String pathId, routeId, directionId, networkId;
 

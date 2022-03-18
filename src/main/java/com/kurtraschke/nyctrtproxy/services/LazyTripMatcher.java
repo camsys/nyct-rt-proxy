@@ -32,12 +32,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Named;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Implementation of trip matching that allows a looser matching.
@@ -94,19 +92,66 @@ public class LazyTripMatcher implements TripMatcher {
     if (id == null)
       return new TripMatchResult(tu, Status.BAD_TRIP_ID);
 
-    ServiceDate sd = new ServiceDate(new Date(timestamp * 1000));
-    Set<TripMatchResult> candidates = Sets.newHashSet();
-    boolean foundTripWithStartTime = addCandidates(tu, id, sd, candidates);
+    //ServiceDates
+    Set<ServiceDate> serviceDates = getServiceDates(tu, id, timestamp);
 
-    // Look back to previous day. Static IDs have a 26-hour service period, RT IDs are relative to midnight.
-    // Latest trip departure is 26:02:00, so this technically allows us to consider trips that are up to 58min late (and most likely later.)
-    if (id.getOriginDepartureTime() < 3 * 60 * 100)
-      foundTripWithStartTime |= addCandidates(tu, id.relativeToPreviousDay(), sd.previous(), candidates);
+    Set<TripMatchResult> candidates = Sets.newHashSet();
+    boolean foundTripWithStartTime = addCandidates(tu, id, serviceDates, candidates);
+
+   /* if (id.getOriginDepartureTime() < TimeUnit.HOURS.toMinutes(3) * 100 || (hasServiceDateMismatch(tu, timestamp))) {
+      Set<ServiceDate> serviceDates2 = new HashSet<>();
+      serviceDates2.add((new ServiceDate(new Date(timestamp * 1000)).previous()));
+      foundTripWithStartTime |= addCandidates(tu, id.relativeToPreviousDay(), serviceDates2, candidates);
+
+    }*/
 
     if (candidates.isEmpty())
       return new TripMatchResult(tu, foundTripWithStartTime ? Status.NO_MATCH : Status.NO_TRIP_WITH_START_DATE);
     else
       return Collections.max(candidates); // get BEST match. see TripMatchResult::compareTo
+  }
+
+  private boolean hasServiceDateMismatch(GtfsRealtime.TripUpdateOrBuilder tu, long timestamp){
+    if(tu.getTrip().hasStartDate()) {
+      try {
+        Date startDate = new SimpleDateFormat("yyyyMMdd", Locale.ENGLISH).parse(tu.getTrip().getStartDate());
+        ServiceDate startDateServiceDate = new ServiceDate(startDate);
+        ServiceDate currentServiceDate = new ServiceDate(new Date(TimeUnit.SECONDS.toMillis(timestamp)));
+        if(!currentServiceDate.equals(startDateServiceDate)){
+          return true;
+        }
+      } catch (Exception e) {
+        _log.error("Unable to parse start date for trip update trip {}", tu.getTrip().getTripId());
+      }
+    }
+    return false;
+  }
+
+  // Refactored lookback to previous day.
+  // If serviceDate is
+  private Set<ServiceDate> getServiceDates(GtfsRealtime.TripUpdateOrBuilder tu, NyctTripId id, long timestamp){
+    Set<ServiceDate> serviceDates = new HashSet<>();
+    ServiceDate currentServiceDate = new ServiceDate(new Date(TimeUnit.SECONDS.toMillis(timestamp)));
+
+    // 1. Add service date for prev date if start date in trip update is for prev date
+    if(tu.getTrip().hasStartDate()) {
+      try {
+        Date startDate = new SimpleDateFormat("yyyyMMdd", Locale.ENGLISH).parse(tu.getTrip().getStartDate());
+        ServiceDate startDateServiceDate = new ServiceDate(startDate);
+        if(startDateServiceDate.difference(currentServiceDate) == 1) {
+          serviceDates.add(startDateServiceDate);
+        }
+      } catch (Exception e) {
+        _log.error("Unable to parse start date for trip update trip {}", tu.getTrip().getTripId());
+      }
+    }
+
+    // 2. Add service date for current time stamp if none exists
+    if(serviceDates.isEmpty()) {
+      serviceDates.add(currentServiceDate);
+    }
+
+    return serviceDates;
   }
 
   @Override
@@ -116,41 +161,60 @@ public class LazyTripMatcher implements TripMatcher {
 
   // Find possible match candidates among static trips.
   // return true if trips were found with start date
-  private boolean addCandidates(GtfsRealtime.TripUpdateOrBuilder tu, NyctTripId id, ServiceDate sd, Set<TripMatchResult> candidates) {
+  private boolean addCandidates(GtfsRealtime.TripUpdateOrBuilder tu,
+                                NyctTripId realTimeTripId,
+                                Set<ServiceDate> serviceDates,
+                                Set<TripMatchResult> candidates) {
 
     boolean found = false;
-    Route r = _gtfs.getRouteForId(new AgencyAndId(_agencyId, tu.getTrip().getRouteId()));
-    Set<AgencyAndId> serviceIds = _gtfs.getServiceIdsOnDate(sd);
+    GtfsRealtime.TripDescriptor tripDescriptor = tu.getTrip();
+    String routeId = tripDescriptor.getRouteId();
+    Route r = _gtfs.getRouteForId(new AgencyAndId(_agencyId, routeId));
+    Map<ServiceDate, Set<AgencyAndId>> serviceDateToServiceIdsMap = new HashMap<>();
 
-    // We check through all trips. This could be easily restricted, but performance has not been a problem.
-    for (Trip trip : _gtfs.getTripsForRoute(r)) {
-      List<StopTime> stopTimes = _gtfs.getStopTimesForTrip(trip);
-      if (stopTimes.isEmpty())
-        continue;
-      NyctTripId atid = NyctTripId.buildFromGtfs(trip, stopTimes);
-      if (atid == null || !atid.routeDirMatch(id))
-        continue;
-      int start = stopTimes.get(0).getDepartureTime(); // in sec into day.
-      int end = stopTimes.get(stopTimes.size()-1).getArrivalTime();
-      boolean onServiceDay = serviceIds.contains(trip.getServiceId());
-      if (!onServiceDay && !_allowServiceDayCoercion) {
-        continue;
-      }
-      if (atid.strictMatch(id) && onServiceDay) {
-        found = true;
-        candidates.add(new TripMatchResult(tu, new ActivatedTrip(sd, trip, stopTimes)));
-        continue;
-      }
-      // loose match, RT trip could be late relative to static trip
-      int delta = (int) (((double) id.getOriginDepartureTime())*0.6 - start);
-      if (!_looseMatchDisabled && delta >= 0 && delta < _lateTripLimitSec) {
-        found &= onServiceDay;
+    List<Trip> trips = _gtfs.getTripsForRoute(r);
 
-        ActivatedTrip at = new ActivatedTrip(sd, trip, stopTimes);
-        TripMatchResult result = TripMatchResult.looseMatch(tu, at, delta, onServiceDay);
-        // disable trips that are coerced AND on a different day
-        if ((onServiceDay || delta == 0) && (result.stopsMatchToEnd() || _mergableRoutes.contains(tu.getTrip().getRouteId())))
-          candidates.add(result);
+    for(ServiceDate sd: serviceDates) {
+
+      Set<AgencyAndId> serviceIdsOnDate = _gtfs.getServiceIdsOnDate(sd);
+
+      // We check through all trips. This could be easily restricted, but performance has not been a problem.
+      for (Trip trip : trips) {
+
+        boolean onServiceDay = serviceIdsOnDate.contains(trip.getServiceId());
+        if (!onServiceDay && !_allowServiceDayCoercion) {
+          continue;
+        }
+
+        List<StopTime> stopTimes = _gtfs.getStopTimesForTrip(trip);
+        if (stopTimes.isEmpty())
+          continue;
+
+        NyctTripId atid = NyctTripId.buildFromGtfs(trip, stopTimes);
+        if (atid == null || !atid.routeDirMatch(realTimeTripId))
+          continue;
+
+        int scheduledTripStartTime = stopTimes.get(0).getDepartureTime(); // in sec into day.
+        int scheduledTripEndTime = stopTimes.get(stopTimes.size() - 1).getArrivalTime();
+
+        if (atid.strictMatch(realTimeTripId) && onServiceDay) {
+          found = true;
+          candidates.add(new TripMatchResult(tu, new ActivatedTrip(sd, trip, stopTimes)));
+          continue;
+        }
+        // loose match, RT trip could be late relative to static trip
+        double rtTripDepartureTime = ((double) realTimeTripId.getOriginDepartureTime()) * 0.6;
+        int delta = (int) (rtTripDepartureTime - scheduledTripStartTime);
+
+        if (!_looseMatchDisabled && delta >= 0 && delta < _lateTripLimitSec) {
+          found &= onServiceDay;
+
+          ActivatedTrip at = new ActivatedTrip(sd, trip, stopTimes);
+          TripMatchResult result = TripMatchResult.looseMatch(tu, at, delta, onServiceDay);
+          // disable trips that are coerced AND on a different day
+          if ((onServiceDay || delta == 0) && (result.stopsMatchToEnd() || _mergableRoutes.contains(tu.getTrip().getRouteId())))
+            candidates.add(result);
+        }
 
       }
     }
