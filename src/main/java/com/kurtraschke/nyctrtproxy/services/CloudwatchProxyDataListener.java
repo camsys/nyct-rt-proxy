@@ -21,6 +21,9 @@ import org.onebusaway.cloud.api.ExternalServicesBridgeFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Obtain metrics per-route and per-feed, and report to Cloudwatch.
  *
@@ -63,21 +66,23 @@ public class CloudwatchProxyDataListener implements ProxyDataListener {
     if (isDisabled())
       return false;
 
+    MetricValues metricValues = new MetricValues();
+
     // report latency metric
     if (metrics.getLatency() >= 0) {
-      publishMetric(namespace, "Latency", dimensionName, dimensionValue, metrics.getLatency());
+      metricValues.addValues("Latency", dimensionName, dimensionValue, metrics.getLatency());
     }
 
     if (metrics.getMatchedTrips() + metrics.getAddedTrips() > 0) {
 
       // non verbose
-      publishMetric(namespace, "RecordsIn", dimensionName, dimensionValue, metrics.getRecordsIn());
-      publishMetric(namespace, "ExpiredUpdates", dimensionName, dimensionValue, metrics.getExpiredUpdates());
-      publishMetric(namespace, "MatchedTrips", dimensionName, dimensionValue, metrics.getMatchedTrips());
-      publishMetric(namespace, "AddedTrips", dimensionName, dimensionValue, metrics.getAddedTrips());
-      publishMetric(namespace, "CancelledTrips", dimensionName, dimensionValue, metrics.getCancelledTrips());
-      publishMetric(namespace, "MergedTrips", dimensionName, dimensionValue, metrics.getMergedTrips());
-      publishMetric(namespace, "RecordsOut", dimensionName, dimensionValue, metrics.getRecordsOut());
+      metricValues.addValues( "RecordsIn", dimensionName, dimensionValue, metrics.getRecordsIn());
+      metricValues.addValues( "ExpiredUpdates", dimensionName, dimensionValue, metrics.getExpiredUpdates());
+      metricValues.addValues( "MatchedTrips", dimensionName, dimensionValue, metrics.getMatchedTrips());
+      metricValues.addValues( "AddedTrips", dimensionName, dimensionValue, metrics.getAddedTrips());
+      metricValues.addValues( "CancelledTrips", dimensionName, dimensionValue, metrics.getCancelledTrips());
+      metricValues.addValues( "MergedTrips", dimensionName, dimensionValue, metrics.getMergedTrips());
+      metricValues.addValues( "RecordsOut", dimensionName, dimensionValue, metrics.getRecordsOut());
 
       if (_verbose) {
         double nRt = metrics.getMatchedTrips() + metrics.getAddedTrips();
@@ -91,26 +96,51 @@ public class CloudwatchProxyDataListener implements ProxyDataListener {
         double nLooseMatchCoercionPct = ((double) metrics.getLooseMatchCoercion()) / nRt;
         double nMergedPct = ((double) metrics.getMergedTrips()) / nRt;
 
-        publishMetric(namespace, "DuplicateTripMatches", dimensionName, dimensionValue, metrics.getDuplicates());
-        publishMetric(namespace, "UnmatchedBadId", dimensionName, dimensionValue, metrics.getBadId());
-        publishMetric(namespace, "MatchedRtTripsPct", dimensionName, dimensionValue, nMatchedRtPct);
-        publishMetric(namespace, "UnmatchedWithoutStartDatePct", dimensionName, dimensionValue, nUnmatchedWithoutStartDatePct);
-        publishMetric(namespace, "UnmatchedNoStopMatchPct", dimensionName, dimensionValue, nUnmatchedNoStopMatchPct);
-        publishMetric(namespace, "StrictMatchPct", dimensionName, dimensionValue, nStrictMatchPct);
-        publishMetric(namespace, "LooseMatchSameDayPct", dimensionName, dimensionValue, nLooseMatchSameDayPct);
-        publishMetric(namespace, "LooseMatchOtherDayPct", dimensionName, dimensionValue, nLooseMatchOtherDayPct);
-        publishMetric(namespace, "LooseMatchCoercionPct", dimensionName, dimensionValue,  nLooseMatchCoercionPct);
-        publishMetric(namespace, "MergedTripsPct", dimensionName, dimensionValue, nMergedPct);
-
+        metricValues.addValues( "DuplicateTripMatches", dimensionName, dimensionValue, metrics.getDuplicates());
+        metricValues.addValues( "UnmatchedBadId", dimensionName, dimensionValue, metrics.getBadId());
+        metricValues.addValues( "MatchedRtTripsPct", dimensionName, dimensionValue, nMatchedRtPct);
+        metricValues.addValues( "UnmatchedWithoutStartDatePct", dimensionName, dimensionValue, nUnmatchedWithoutStartDatePct);
+        metricValues.addValues( "UnmatchedNoStopMatchPct", dimensionName, dimensionValue, nUnmatchedNoStopMatchPct);
+        metricValues.addValues( "StrictMatchPct", dimensionName, dimensionValue, nStrictMatchPct);
+        metricValues.addValues( "LooseMatchSameDayPct", dimensionName, dimensionValue, nLooseMatchSameDayPct);
+        metricValues.addValues( "LooseMatchOtherDayPct", dimensionName, dimensionValue, nLooseMatchOtherDayPct);
+        metricValues.addValues( "LooseMatchCoercionPct", dimensionName, dimensionValue,  nLooseMatchCoercionPct);
+        metricValues.addValues( "MergedTripsPct", dimensionName, dimensionValue, nMergedPct);
       }
+    }
+
+    if (_externalServices.isInstancePrimary()) {
+
+      _externalServices.publishMetrics(namespace, metricValues.getMetricNames(), metricValues.getDimensionNames(), metricValues.getDimensionValues(), metricValues.getValues());
     }
 
     return true;
   }
 
-  void publishMetric(String namespace, String metricName, String dimensionName, String dimensionValue, double value) {
-    if (_externalServices.isInstancePrimary()) {
-      _externalServices.publishMetric(namespace, metricName, dimensionName, dimensionValue, value);
+  private class MetricValues{
+    private ArrayList<String> metricNames ;
+    private ArrayList<String> dimensionNames;
+    private ArrayList<String> dimensionValues;
+    private ArrayList<Double> values;
+
+    public void addValues(String metricName, String dimensionName, String dimensionValue, double value){
+      metricNames.add(metricName);
+      dimensionNames.add(dimensionName);
+      dimensionValues.add(dimensionValue);
+      values.add(value);
+    }
+
+    public ArrayList<Double> getValues() {
+      return values;
+    }
+    public ArrayList<String> getDimensionNames() {
+      return dimensionNames;
+    }
+    public ArrayList<String> getDimensionValues() {
+      return dimensionValues;
+    }
+    public ArrayList<String> getMetricNames() {
+      return metricNames;
     }
   }
 
