@@ -118,10 +118,10 @@ public class CloudwatchProxyDataListener implements ProxyDataListener {
   }
 
   private class MetricValues{
-    private ArrayList<String> metricNames ;
-    private ArrayList<String> dimensionNames;
-    private ArrayList<String> dimensionValues;
-    private ArrayList<Double> values;
+    private ArrayList<String> metricNames = new ArrayList<>();
+    private ArrayList<String> dimensionNames = new ArrayList<>();
+    private ArrayList<String> dimensionValues = new ArrayList<>();
+    private ArrayList<Double> values = new ArrayList<>();
 
     public void addValues(String metricName, String dimensionName, String dimensionValue, double value){
       metricNames.add(metricName);
