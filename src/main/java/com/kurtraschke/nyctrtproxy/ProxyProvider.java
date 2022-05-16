@@ -181,6 +181,7 @@ public class ProxyProvider {
       if (message != null) {
         try {
           tripUpdates.addAll(_processor.processFeed(feedId, message, totalMetrics));
+          _listener.sendMetrics(_processor.getCloudwatchNamespace());
         } catch (Exception e) {
           e.printStackTrace();
         }
@@ -198,8 +199,10 @@ public class ProxyProvider {
 
     _tripUpdatesSink.handleFullUpdate(grfu);
 
-    if (_listener != null)
-      _listener.reportMatchesTotal(totalMetrics, _processor.getCloudwatchNamespace());
+    if (_listener != null) {
+      _listener.prepareMatchesTotal(totalMetrics, _processor.getCloudwatchNamespace());
+      _listener.sendMetrics(_processor.getCloudwatchNamespace());
+    }
   }
 
 
