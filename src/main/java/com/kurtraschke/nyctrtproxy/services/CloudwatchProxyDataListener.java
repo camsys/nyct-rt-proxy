@@ -22,6 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 /**
@@ -40,33 +41,39 @@ public class CloudwatchProxyDataListener implements ProxyDataListener {
 
   private ExternalServices _externalServices = new ExternalServicesBridgeFactory().getExternalServices();
 
+  private HashMap<String,MetricValues> metricValuesByNamespace = new HashMap<String, MetricValues>();
+
   @Override
-  public void reportMatchesForRoute(String routeId, MatchMetrics metrics, String namespace) {
-    if (!reportMatches("route", routeId, metrics, namespace))
-      _log.info("Cloudwatch: no data reported for route={}", routeId);
+  public void prepareMatchesForRoute(String routeId, MatchMetrics metrics, String namespace) {
+    if (!prepareMatches("route", routeId, metrics, namespace))
+      _log.info("Cloudwatch: no data prepared for route={}", routeId);
     _log.info("route={}, nMatchedTrips={}, nAddedTrips={}, nCancelledTrips={}, nDuplicates={}, nMergedTrips={}",routeId, metrics.getMatchedTrips(), metrics.getAddedTrips(), metrics.getCancelledTrips(), metrics.getDuplicates(), metrics.getMergedTrips());
   }
 
   @Override
-  public void reportMatchesForSubwayFeed(String feedId, MatchMetrics metrics, String namespace) {
-    if (!reportMatches("feed", feedId, metrics, namespace))
-      _log.info("Cloudwatch: no data reported for feed={}", feedId);
+  public void prepareMatchesForSubwayFeed(String feedId, MatchMetrics metrics, String namespace) {
+    if (!prepareMatches("feed", feedId, metrics, namespace))
+      _log.info("Cloudwatch: no data prepared for feed={}", feedId);
     _log.info("feed={}, nMatchedTrips={}, nAddedTrips={}, nCancelledTrips={}, nDuplicates={}, nMergedTrips={}", feedId, metrics.getMatchedTrips(), metrics.getAddedTrips(), metrics.getCancelledTrips(), metrics.getDuplicates(), metrics.getMergedTrips());
   }
 
   @Override
-  public void reportMatchesTotal(MatchMetrics metrics, String namespace) {
-    if (!reportMatches(null, null, metrics, namespace))
-      _log.info("Cloudwatch: no data reported for total metrics.");
+  public void prepareMatchesTotal(MatchMetrics metrics, String namespace) {
+    if (!prepareMatches(null, null, metrics, namespace))
+      _log.info("Cloudwatch: no data prepared for total metrics.");
     _log.info("total: nMatchedTrips={}, nAddedTrips={}, nCancelledTrips={}, nDuplicates={}, nMergedTrips={}", metrics.getMatchedTrips(), metrics.getAddedTrips(), metrics.getCancelledTrips(), metrics.getDuplicates(), metrics.getMergedTrips());
   }
 
 
-  private boolean reportMatches(String dimensionName, String dimensionValue, MatchMetrics metrics, String namespace) {
+  private boolean prepareMatches(String dimensionName, String dimensionValue, MatchMetrics metrics, String namespace) {
     if (isDisabled())
       return false;
 
-    MetricValues metricValues = new MetricValues();
+    MetricValues metricValues = metricValuesByNamespace.get(namespace);
+    if(metricValues==null){
+      metricValues = new MetricValues();
+      metricValuesByNamespace.put(namespace,metricValues);
+    }
 
     // report latency metric
     if (metrics.getLatency() >= 0) {
@@ -108,13 +115,21 @@ public class CloudwatchProxyDataListener implements ProxyDataListener {
         metricValues.addValues( "MergedTripsPct", dimensionName, dimensionValue, nMergedPct);
       }
     }
-
-    if (_externalServices.isInstancePrimary()) {
-
-      _externalServices.publishMetrics(namespace, metricValues.getMetricNames(), metricValues.getDimensionNames(), metricValues.getDimensionValues(), metricValues.getValues());
-    }
-
     return true;
+  }
+
+  public boolean sendMetrics(String namespace){
+    boolean result = false;
+    MetricValues metricValues = metricValuesByNamespace.get(namespace);
+    if(metricValues==null){
+      _log.info("could not find metrics for namespace: " + namespace);
+    }
+    if (_externalServices.isInstancePrimary()) {
+      result = _externalServices.publishMetrics(namespace, metricValues.getMetricNames(), metricValues.getDimensionNames(), metricValues.getDimensionValues(), metricValues.getValues()).getSuccess();
+    }
+    ///THIS ASSUMES THAT IF AN INSTANCE IS NOT PRIMARY IT WILL NOT BECOME PRIMARY AND WISH IT HAD OLD DATA!!!
+    metricValuesByNamespace.remove(namespace);
+    return result;
   }
 
   private class MetricValues{

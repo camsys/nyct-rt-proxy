@@ -178,7 +178,7 @@ public class TripUpdateProcessor {
     if (_latencyLimit > 0 && feedMetrics.getLatency() > _latencyLimit) {
       _log.info("Feed {} ignored, too high latency = {}", feedId, feedMetrics.getLatency());
       if (_listener != null)
-        _listener.reportMatchesForSubwayFeed(feedId.toString(), feedMetrics, _cloudwatchNamespace);
+        _listener.prepareMatchesForSubwayFeed(feedId.toString(), feedMetrics, _cloudwatchNamespace);
       return Collections.emptyList();
     }
 
@@ -392,12 +392,12 @@ public class TripUpdateProcessor {
         }
 
         if (_listener != null)
-          _listener.reportMatchesForRoute(routeId, routeMetrics, _cloudwatchNamespace);
+          _listener.prepareMatchesForRoute(routeId, routeMetrics, _cloudwatchNamespace);
         }
       }
 
     if (_listener != null)
-      _listener.reportMatchesForSubwayFeed(feedId.toString(), feedMetrics, _cloudwatchNamespace);
+      _listener.prepareMatchesForSubwayFeed(feedId.toString(), feedMetrics, _cloudwatchNamespace);
 
     _log.info("feed={}, expired TUs={}", feedId, nExpiredTus);
     return ret;
