@@ -126,6 +126,7 @@ public class CloudwatchProxyDataListener implements ProxyDataListener {
     }
     if (_externalServices.isInstancePrimary()) {
       result = _externalServices.publishMetrics(namespace, metricValues.getMetricNames(), metricValues.getDimensionNames(), metricValues.getDimensionValues(), metricValues.getValues()).getSuccess();
+      metricValuesByNamespace.put(namespace,new MetricValues());
     }
     ///THIS ASSUMES THAT IF AN INSTANCE IS NOT PRIMARY IT WILL NOT BECOME PRIMARY AND WISH IT HAD OLD DATA!!!
     metricValuesByNamespace.remove(namespace);
