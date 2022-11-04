@@ -215,7 +215,23 @@
           <artifactId>gitflow-maven-plugin</artifactId>
           <version>1.18.0</version>
           <configuration>
-            <!-- optional configuration -->
+            <gitFlowConfig>
+              <productionBranch>master</productionBranch>
+              <developmentBranch>develop</developmentBranch>
+              <featureBranchPrefix>feature/</featureBranchPrefix>
+              <releaseBranchPrefix>release</releaseBranchPrefix>
+              <hotfixBranchPrefix>hotfix/</hotfixBranchPrefix>
+              <supportBranchPrefix>support/</supportBranchPrefix>
+              <origin>origin</origin>
+            </gitFlowConfig>
+            <commitMessages>
+              <releaseStartMessage>Update versions to @{version} for release</releaseStartMessage>
+              <releaseFinishMessage>Update for next development version</releaseFinishMessage>
+              <releaseVersionUpdateMessage>Update versions to @{version} for release</releaseVersionUpdateMessage>
+              <hotfixStartMessage>Update versions to @{version} for hotfix</hotfixStartMessage>
+              <hotfixFinishMessage>Update for next development version</hotfixFinishMessage>
+              <hotfixVersionUpdateMessage>Update versions to @{version} for hotfix</hotfixVersionUpdateMessage>
+            </commitMessages>
           </configuration>
         </plugin>
       </plugins>
