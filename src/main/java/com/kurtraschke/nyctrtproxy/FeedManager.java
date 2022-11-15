@@ -15,6 +15,7 @@
  */
 package com.kurtraschke.nyctrtproxy;
 
+import org.apache.http.Header;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -23,6 +24,8 @@ import org.apache.http.config.SocketConfig;
 import org.apache.http.conn.HttpClientConnectionManager;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.params.CoreProtocolPNames;
+import org.apache.http.params.HttpProtocolParams;
 import org.onebusaway.cloud.api.Credential;
 import org.onebusaway.cloud.api.ExternalServices;
 import org.onebusaway.cloud.api.ExternalServicesBridgeFactory;
@@ -137,6 +140,10 @@ public class FeedManager {
 
 
     public InputStream getStream(String feedUrl, String feedId) throws IOException {
+        return getStream(feedUrl,feedId,null);
+    }
+
+    public InputStream getStream(String feedUrl, String feedId, String userAgent) throws IOException {
         Credential credential = getCredentialOrDefault(feedId);
 
         if (Credential.CredentialType.API_KEY_HEADER.equals(credential.getType())) {
@@ -144,7 +151,7 @@ public class FeedManager {
             _log.debug("header " +  credential.getKeyName() + " = " + credential.getKey() );
             get.setHeader(credential.getKeyName(), credential.getKey());//"x-api-key"
             _log.debug("getStream [header](" + get.getRequestLine().getUri() + ", " + feedId + ") cred=" + credential);
-            return getUrl(get);
+            return getUrl(get,userAgent);
         } else if (Credential.CredentialType.API_KEY_PARAM.equals(credential.getType())) {
             try {
                 URIBuilder ub = new URIBuilder(_url);
@@ -185,9 +192,19 @@ public class FeedManager {
         }
     }
 
+
+
     private InputStream getUrl(HttpGet get) throws IOException {
+        return getUrl(get,null);
+    }
+
+    private InputStream getUrl(HttpGet get,String userAgent) throws IOException {
         if (getHttpClient() == null)  throw new IllegalStateException("_httpClient is null!");
-        CloseableHttpResponse response = getHttpClient().execute(get);
+        CloseableHttpClient client = getHttpClient();
+        CloseableHttpResponse response = client.execute(get);
+        if(userAgent!=null) {
+            response.setHeader("User-Agent", userAgent);
+        }
         if (response.getStatusLine().getStatusCode() != 200) {
             _log.error("" + get.getRequestLine() + " (" +
                     + response.getStatusLine().getStatusCode() + ") failed with: " + response.getEntity().getContent().toString());
