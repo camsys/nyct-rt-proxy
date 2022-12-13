@@ -16,6 +16,7 @@
 package com.kurtraschke.nyctrtproxy;
 
 import org.apache.http.Header;
+import org.apache.http.HeaderIterator;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -39,8 +40,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URISyntaxException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Manage feed requests, their protocols and their associated credentials mechanisms.
@@ -161,7 +164,7 @@ public class FeedManager {
                 feedUrl = ub.build().toString();
                 HttpGet get = new HttpGet(feedUrl);
                 _log.debug("getStream [param](" + get.getRequestLine().getUri() + ", " + feedId + ") cred=" + credential);
-                return getUrl(get);
+                return getUrl(get, userAgent);
             } catch (URISyntaxException use) {
                 _log.error("invalid uri ", use);
                 throw new IOException(use);
@@ -186,7 +189,7 @@ public class FeedManager {
         } else if (Credential.CredentialType.NO_OP.equals(credential.getType())) {
             HttpGet get = new HttpGet(feedUrl);
             _log.debug("getStream[noop](" + feedUrl + ")");
-            return getUrl(get);
+            return getUrl(get, userAgent);
         } else {
             throw new UnsupportedOperationException("unknown credential type " + credential.getType());
         }
@@ -200,11 +203,19 @@ public class FeedManager {
 
     private InputStream getUrl(HttpGet get,String userAgent) throws IOException {
         if (getHttpClient() == null)  throw new IllegalStateException("_httpClient is null!");
+        if(userAgent!=null) {
+            get.addHeader("User-Agent", userAgent);
+        }
+        String headersLogStatement = "headers for request " + get.getURI() + " :";
+        HeaderIterator headIt = get.headerIterator();
+        while(headIt.hasNext()) {
+            Header header = headIt.nextHeader();
+            headersLogStatement += "\n header name: " + header.getName() + "  ---  header value: " +header.getValue();
+        }
+        _log.debug(headersLogStatement);
+
         CloseableHttpClient client = getHttpClient();
         CloseableHttpResponse response = client.execute(get);
-        if(userAgent!=null) {
-            response.setHeader("User-Agent", userAgent);
-        }
         if (response.getStatusLine().getStatusCode() != 200) {
             _log.error("" + get.getRequestLine() + " (" +
                     + response.getStatusLine().getStatusCode() + ") failed with: " + response.getEntity().getContent().toString());
