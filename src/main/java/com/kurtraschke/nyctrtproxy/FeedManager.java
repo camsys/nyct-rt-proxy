@@ -212,7 +212,7 @@ public class FeedManager {
             Header header = headIt.nextHeader();
             headersLogStatement += "\n header name: " + header.getName() + "  ---  header value: " +header.getValue();
         }
-        _log.debug(headersLogStatement);
+        _log.info(headersLogStatement);
 
         CloseableHttpClient client = getHttpClient();
         CloseableHttpResponse response = client.execute(get);
