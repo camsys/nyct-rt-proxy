@@ -16,6 +16,7 @@
 package com.kurtraschke.nyctrtproxy;
 
 import org.apache.http.Header;
+import org.apache.http.HeaderIterator;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -24,8 +25,6 @@ import org.apache.http.config.SocketConfig;
 import org.apache.http.conn.HttpClientConnectionManager;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.params.CoreProtocolPNames;
-import org.apache.http.params.HttpProtocolParams;
 import org.onebusaway.cloud.api.Credential;
 import org.onebusaway.cloud.api.ExternalServices;
 import org.onebusaway.cloud.api.ExternalServicesBridgeFactory;
@@ -39,8 +38,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URISyntaxException;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Manage feed requests, their protocols and their associated credentials mechanisms.
@@ -49,7 +47,7 @@ public class FeedManager {
 
     private static final org.slf4j.Logger _log = LoggerFactory.getLogger(FeedManager.class);
 
-    private Credential _defaultCredential;
+    private ArrayList<Credential> _defaultCredentials = new ArrayList<>();
     private CloseableHttpClient _httpClient;
     private int DEFAULT_TIME_OUT = 5000;
     private int _timeout = DEFAULT_TIME_OUT;
@@ -63,8 +61,8 @@ public class FeedManager {
     public void setBaseUrl(String url) {
         _url = url;
     }
-    public void setDefaultCredential(Credential credential) {
-        _defaultCredential = credential;
+    public void setDefaultCredentials(List<Credential> credentials) {
+        _defaultCredentials.addAll(credentials);
     }
     private Map<String, String> _feedToUrlOverride = new HashMap<>();
     public java.util.Map<String, String> getOverrideFeedToUrlMap() {
@@ -89,23 +87,23 @@ public class FeedManager {
         return _es;
     }
 
-    private Map<String, Credential> _feedToCredentialOverride = new HashMap<String, Credential>();
-    public Map<String, Credential> getFeedToCredentialOverride() {
+    private Map<String, List<Credential>> _feedToCredentialOverride = new HashMap<String, List<Credential>>();
+    public Map<String, List<Credential>> getFeedToCredentialOverride() {
         return _feedToCredentialOverride;
     }
-    public void setFeedToCredentialOverride(Map<String, Credential> kv) {
+    public void setFeedToCredentialOverride(Map<String, List<Credential>> kv) {
         for (String key: kv.keySet()) {
             _feedToCredentialOverride.put(key, kv.get(key));
         }
     }
 
-    public Credential getCredentialOrDefault(String feedId) {
+    public List<Credential> getCredentialOrDefault(String feedId) {
         if (_feedToCredentialOverride.containsKey(feedId)) {
             _log.debug("feedId " + feedId + " returning credential " + _feedToCredentialOverride.get(feedId));
             return _feedToCredentialOverride.get(feedId);
         }
-        _log.debug("feedId " + feedId + " returning default credential " + _defaultCredential);
-        return _defaultCredential;
+        _log.debug("feedId " + feedId + " returning default credential " + _defaultCredentials);
+        return _defaultCredentials;
     }
 
     public void setHttpClientConnectionManager(HttpClientConnectionManager connectionManager) {
@@ -144,29 +142,37 @@ public class FeedManager {
     }
 
     public InputStream getStream(String feedUrl, String feedId, String userAgent) throws IOException {
-        Credential credential = getCredentialOrDefault(feedId);
-
-        if (Credential.CredentialType.API_KEY_HEADER.equals(credential.getType())) {
+        List<Credential> credentials = getCredentialOrDefault(feedId);
+        Credential firstCredential = credentials.get(0);
+        if (Credential.CredentialType.API_KEY_HEADER.equals(firstCredential.getType())) {
             HttpGet get = new HttpGet(feedUrl);
-            _log.debug("header " +  credential.getKeyName() + " = " + credential.getKey() );
-            get.setHeader(credential.getKeyName(), credential.getKey());//"x-api-key"
-            _log.debug("getStream [header](" + get.getRequestLine().getUri() + ", " + feedId + ") cred=" + credential);
-            return getUrl(get,userAgent);
-        } else if (Credential.CredentialType.API_KEY_PARAM.equals(credential.getType())) {
+            for (Credential credential : credentials) {
+                _log.debug("header " + credential.getKeyName() + " = " + credential.getKey());
+                get.setHeader(credential.getKeyName(), credential.getKey());//"x-api-key"
+                _log.debug("getStream [header](" + get.getRequestLine().getUri() + ", " + feedId + ") cred=" + credential);
+            }
+            return getUrl(get, userAgent);
+        } else if (Credential.CredentialType.API_KEY_PARAM.equals(firstCredential.getType())) {
             try {
                 URIBuilder ub = new URIBuilder(_url);
-                // use api key as param
-                ub.addParameter("key", credential.getKey());
-                ub.addParameter("feed_id", feedId);
+                for (Credential credential : credentials) {
+                    // use api key as param
+                    ub.addParameter("key", credential.getKey());
+                    ub.addParameter("feed_id", feedId);
+                }
                 feedUrl = ub.build().toString();
                 HttpGet get = new HttpGet(feedUrl);
-                _log.debug("getStream [param](" + get.getRequestLine().getUri() + ", " + feedId + ") cred=" + credential);
-                return getUrl(get);
+                _log.debug("getStream [param](" + get.getRequestLine().getUri() + ", " + feedId + ") cred=" + firstCredential);
+                return getUrl(get, userAgent);
             } catch (URISyntaxException use) {
                 _log.error("invalid uri ", use);
                 throw new IOException(use);
             }
-        } else if (Credential.CredentialType.EXTERNAL_PROFILE.equals(credential.getType())) {
+        } else if (Credential.CredentialType.EXTERNAL_PROFILE.equals(firstCredential.getType())) {
+            // multiple credentials don't make sense here, we use the first one
+            if (credentials.size() > 1) {
+                _log.error("multiple credentials present for profile, using first only=" + firstCredential);
+            }
             ExternalServices es = getExternalServices();
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             _log.debug("getStream(S3)[" + feedUrl + ")");
@@ -180,19 +186,17 @@ public class FeedManager {
                             }
                             baos.flush();
                         }
-                    }, /*profile*/ credential.getKey(),
-                    /*region*/ credential.getValue());
+                    }, /*profile*/ firstCredential.getKey(),
+                    /*region*/ firstCredential.getValue());
             return new ByteArrayInputStream(baos.toByteArray());
-        } else if (Credential.CredentialType.NO_OP.equals(credential.getType())) {
+        } else if (Credential.CredentialType.NO_OP.equals(firstCredential.getType())) {
             HttpGet get = new HttpGet(feedUrl);
             _log.debug("getStream[noop](" + feedUrl + ")");
-            return getUrl(get);
+            return getUrl(get, userAgent);
         } else {
-            throw new UnsupportedOperationException("unknown credential type " + credential.getType());
+            throw new UnsupportedOperationException("unknown credential type " + firstCredential.getType());
         }
     }
-
-
 
     private InputStream getUrl(HttpGet get) throws IOException {
         return getUrl(get,null);
@@ -200,11 +204,19 @@ public class FeedManager {
 
     private InputStream getUrl(HttpGet get,String userAgent) throws IOException {
         if (getHttpClient() == null)  throw new IllegalStateException("_httpClient is null!");
+        if(userAgent!=null) {
+            get.addHeader("User-Agent", userAgent);
+        }
+        String headersLogStatement = "headers for request " + get.getURI() + " :";
+        HeaderIterator headIt = get.headerIterator();
+        while(headIt.hasNext()) {
+            Header header = headIt.nextHeader();
+            headersLogStatement += "\n header name: " + header.getName() + "  ---  header value: " +header.getValue();
+        }
+        _log.info(headersLogStatement);
+
         CloseableHttpClient client = getHttpClient();
         CloseableHttpResponse response = client.execute(get);
-        if(userAgent!=null) {
-            response.setHeader("User-Agent", userAgent);
-        }
         if (response.getStatusLine().getStatusCode() != 200) {
             _log.error("" + get.getRequestLine() + " (" +
                     + response.getStatusLine().getStatusCode() + ") failed with: " + response.getEntity().getContent().toString());
